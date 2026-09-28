@@ -297,7 +297,7 @@
         <div class="form-group full"><label for="descriptionInput">Descripción</label><input class="form-control" id="descriptionInput" required maxlength="60" placeholder="Ej.: Compra del supermercado"></div>
         <div class="form-group"><label for="amountInput">Importe</label><input class="form-control" id="amountInput" required type="number" min="1" step="1" placeholder="0"></div>
         <div class="form-group"><label for="dateInput">Fecha</label><input class="form-control" id="dateInput" required type="date"></div>
-        <div class="form-group full"><label for="categoryInput">Categoría</label><select class="form-control" id="categoryInput" required></select></div>
+        <div class="form-group full"><label for="categoryInput">Categoría</label><input class="form-control" id="categoryInput" list="categorySuggestions" required maxlength="40" placeholder="Escribí una categoría, por ejemplo Carnicería"><datalist id="categorySuggestions"></datalist></div>
       </div>
       <div class="modal-actions"><button type="button" class="btn" id="cancelDialog">Cancelar</button><button type="submit" class="btn primary">Guardar movimiento</button></div>
     </form>
@@ -311,6 +311,7 @@
       const categories = {
         Vivienda: { color:'#b9ff2c', icon:'⌂' }, Alimentación: { color:'#73a7ff', icon:'◉' }, Transporte: { color:'#ffb55d', icon:'➜' }, Servicios: { color:'#a98cff', icon:'◇' }, Salud: { color:'#ff7c86', icon:'+' }, Entretenimiento: { color:'#38d9c5', icon:'☆' }, Trabajo: { color:'#7fd97a', icon:'▣' }, Ingresos: { color:'#39e6b5', icon:'↗' }, Otros: { color:'#91a8a0', icon:'·' }
       };
+      const customColors=['#b9ff2c','#73a7ff','#ffb55d','#a98cff','#ff7c86','#38d9c5','#7fd97a','#39e6b5','#91a8a0'];
       const sample = [
         {id:'t1',description:'Honorarios — Proyecto Atlas',amount:620000,date:'2026-09-25',category:'Ingresos',type:'income'},
         {id:'t2',description:'Alquiler oficina',amount:185000,date:'2026-09-23',category:'Vivienda',type:'expense'},
@@ -345,13 +346,15 @@
       function monthsBack(n=6){ const arr=[]; let d=new Date('2026-09-01T12:00:00Z'); for(let i=n-1;i>=0;i--){const x=new Date(d);x.setUTCMonth(d.getUTCMonth()-i);arr.push(x.toISOString().slice(0,7));}return arr; }
       function sum(rows,type){ return rows.filter(x=>!type||x.type===type).reduce((a,b)=>a+Number(b.amount),0); }
       function escapeHTML(v=''){ const d=document.createElement('div');d.textContent=v;return d.innerHTML; }
+      function categoryMeta(name='Otros'){ if(categories[name])return categories[name];let hash=0;for(const ch of name)hash=(hash*31+ch.charCodeAt(0))>>>0;return {color:customColors[hash%customColors.length],icon:'•'}; }
       function notify(message){ const t=$('#toast');t.textContent=message;t.classList.add('show');clearTimeout(t._timer);t._timer=setTimeout(()=>t.classList.remove('show'),2400); }
 
       function initFilters(){
         const months=[...new Set(transactions.map(x=>monthKey(x.date)))].sort().reverse();
         $('#monthFilter').innerHTML='<option value="all">Todos los meses</option>'+months.map(m=>`<option value="${m}" ${m==='2026-09'?'selected':''}>${monthName(m)}</option>`).join('');
-        $('#categoryFilter').innerHTML='<option value="all">Todas las categorías</option>'+Object.keys(categories).map(c=>`<option>${c}</option>`).join('');
-        $('#categoryInput').innerHTML=Object.keys(categories).map(c=>`<option>${c}</option>`).join('');
+        const used=[...new Set([...Object.keys(categories),...transactions.map(x=>x.category).filter(Boolean)])].sort((a,b)=>a.localeCompare(b,'es'));
+        $('#categoryFilter').innerHTML='<option value="all">Todas las categorías</option>'+used.map(c=>`<option>${escapeHTML(c)}</option>`).join('');
+        $('#categorySuggestions').innerHTML=used.map(c=>`<option value="${escapeHTML(c)}"></option>`).join('');
       }
 
       function currentRows(){
@@ -376,9 +379,9 @@
       function renderCategories(rows,total,key){
         const data=Object.entries(rows.filter(x=>x.type==='expense').reduce((a,x)=>(a[x.category]=(a[x.category]||0)+Number(x.amount),a),{})).sort((a,b)=>b[1]-a[1]);
         $('#donutValue').textContent=money(total);$('#categoryMonth').textContent=monthName(key);
-        let cursor=0;const gradients=data.map(([name,value])=>{const start=cursor;cursor+=total?value/total*100:0;return `${categories[name]?.color||'#91a8a0'} ${start}% ${cursor}%`;});
+        let cursor=0;const gradients=data.map(([name,value])=>{const start=cursor;cursor+=total?value/total*100:0;return `${categoryMeta(name).color} ${start}% ${cursor}%`;});
         $('#donut').style.background=gradients.length?`conic-gradient(${gradients.join(',')})`:'var(--panel-3)';
-        $('#categoryList').innerHTML=data.length?data.slice(0,5).map(([name,value])=>`<div class="cat-row"><span class="cat-dot" style="--color:${categories[name]?.color}"></span><span>${name}</span><strong>${Math.round(value/total*100)}%</strong></div>`).join(''):'<div class="empty" style="padding:20px">Sin gastos este mes</div>';
+        $('#categoryList').innerHTML=data.length?data.slice(0,5).map(([name,value])=>`<div class="cat-row"><span class="cat-dot" style="--color:${categoryMeta(name).color}"></span><span>${escapeHTML(name)}</span><strong>${Math.round(value/total*100)}%</strong></div>`).join(''):'<div class="empty" style="padding:20px">Sin gastos este mes</div>';
       }
 
       function renderChart(){
@@ -394,13 +397,13 @@
 
       function renderTable(){
         const rows=currentRows();$('#resultCount').textContent=rows.length;$('#emptyState').hidden=rows.length>0;
-        $('#transactionBody').innerHTML=rows.map(x=>`<tr><td><div class="transaction-name"><span class="transaction-icon" style="color:${categories[x.category]?.color}">${categories[x.category]?.icon||'·'}</span><div><strong>${escapeHTML(x.description)}</strong><small>${x.type==='income'?'Ingreso':'Gasto'}</small></div></div></td><td><span class="pill">${escapeHTML(x.category)}</span></td><td>${new Intl.DateTimeFormat('es-AR',{day:'2-digit',month:'short',year:'numeric',timeZone:'UTC'}).format(new Date(x.date+'T12:00:00Z'))}</td><td class="amount ${x.type}">${x.type==='income'?'+':'−'} ${money(x.amount)}</td><td><div class="row-actions"><button class="tiny-btn" data-edit="${x.id}" aria-label="Editar ${escapeHTML(x.description)}">✎</button><button class="tiny-btn" data-delete="${x.id}" aria-label="Eliminar ${escapeHTML(x.description)}">×</button></div></td></tr>`).join('');
+        $('#transactionBody').innerHTML=rows.map(x=>{const meta=categoryMeta(x.category);return `<tr><td><div class="transaction-name"><span class="transaction-icon" style="color:${meta.color}">${meta.icon}</span><div><strong>${escapeHTML(x.description)}</strong><small>${x.type==='income'?'Ingreso':'Gasto'}</small></div></div></td><td><span class="pill">${escapeHTML(x.category)}</span></td><td>${new Intl.DateTimeFormat('es-AR',{day:'2-digit',month:'short',year:'numeric',timeZone:'UTC'}).format(new Date(x.date+'T12:00:00Z'))}</td><td class="amount ${x.type}">${x.type==='income'?'+':'−'} ${money(x.amount)}</td><td><div class="row-actions"><button class="tiny-btn" data-edit="${x.id}" aria-label="Editar ${escapeHTML(x.description)}">✎</button><button class="tiny-btn" data-delete="${x.id}" aria-label="Eliminar ${escapeHTML(x.description)}">×</button></div></td></tr>`}).join('');
         renderMetrics();
       }
 
       function openModal(item){
         $('#movementForm').reset();$('#editId').value=item?.id||'';$('#modalTitle').textContent=item?'Editar movimiento':'Nuevo movimiento';
-        $('#dateInput').value=item?.date||today;$('#descriptionInput').value=item?.description||'';$('#amountInput').value=item?.amount||'';$('#categoryInput').value=item?.category||(item?.type==='income'?'Ingresos':'Alimentación');
+        $('#dateInput').value=item?.date||today;$('#descriptionInput').value=item?.description||'';$('#amountInput').value=item?.amount||'';$('#categoryInput').value=item?.category||'';
         (item?.type==='income'?$('#typeIncome'):$('#typeExpense')).checked=true;$('#movementDialog').showModal();setTimeout(()=>$('#descriptionInput').focus(),50);
       }
       function closeModal(){ $('#movementDialog').close(); }
@@ -411,7 +414,7 @@
         const a=document.createElement('a'),url=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.href=url;a.download='pulso-movimientos.csv';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(url);a.remove()},1200);notify('Archivo CSV preparado');
       }
 
-      $('#movementForm').addEventListener('submit',e=>{e.preventDefault();const id=$('#editId').value,type=document.querySelector('[name=type]:checked').value;const item={id:id||'t'+Date.now(),description:$('#descriptionInput').value.trim(),amount:Number($('#amountInput').value),date:$('#dateInput').value,category:$('#categoryInput').value,type};if(!item.description||!item.date||item.amount<=0)return;if(id){transactions=transactions.map(x=>x.id===id?item:x)}else{transactions.push(item)}save();initFilters();$('#monthFilter').value=monthKey(item.date);renderTable();closeModal();notify(id?'Movimiento actualizado':'Movimiento agregado');});
+      $('#movementForm').addEventListener('submit',e=>{e.preventDefault();const id=$('#editId').value,type=document.querySelector('[name=type]:checked').value;const item={id:id||'t'+Date.now(),description:$('#descriptionInput').value.trim(),amount:Number($('#amountInput').value),date:$('#dateInput').value,category:$('#categoryInput').value.trim(),type};if(!item.description||!item.date||!item.category||item.amount<=0)return;if(id){transactions=transactions.map(x=>x.id===id?item:x)}else{transactions.push(item)}save();initFilters();$('#monthFilter').value=monthKey(item.date);renderTable();closeModal();notify(id?'Movimiento actualizado':'Movimiento agregado');});
       $('#transactionBody').addEventListener('click',e=>{const edit=e.target.closest('[data-edit]'),del=e.target.closest('[data-delete]');if(edit)openModal(transactions.find(x=>x.id===edit.dataset.edit));if(del)removeItem(del.dataset.delete);});
       ['#searchInput','#monthFilter','#typeFilter','#categoryFilter'].forEach(s=>$(s).addEventListener(s.includes('search')?'input':'change',renderTable));
       $('#newBtn').onclick=$('#mobileNew').onclick=()=>openModal();$('#closeDialog').onclick=$('#cancelDialog').onclick=closeModal;$('#exportBtn').onclick=$('#sideExport').onclick=exportCSV;
@@ -427,7 +430,7 @@
       if(context?.registerTool){
         const register=(tool)=>Promise.resolve(context.registerTool(tool)).catch(()=>{});
         register({name:'read_financial_summary',title:'Leer resumen financiero',description:'Devuelve los totales de ingresos, gastos y balance del mes indicado sin modificar datos.',inputSchema:{type:'object',properties:{month:{type:'string',pattern:'^\\d{4}-\\d{2}$'}},required:['month'],additionalProperties:false},annotations:{readOnlyHint:true,untrustedContentHint:false},execute({month}){const rows=transactions.filter(x=>monthKey(x.date)===month),income=sum(rows,'income'),expense=sum(rows,'expense');return {month,income,expense,balance:income-expense,transaction_count:rows.length};}});
-        register({name:'create_financial_movement',title:'Crear movimiento',description:'Crea un ingreso o gasto y actualiza inmediatamente el tablero visible.',inputSchema:{type:'object',properties:{description:{type:'string',minLength:1,maxLength:60},amount:{type:'number',exclusiveMinimum:0},date:{type:'string',pattern:'^\\d{4}-\\d{2}-\\d{2}$'},category:{type:'string',enum:Object.keys(categories)},type:{type:'string',enum:['income','expense']}},required:['description','amount','date','category','type'],additionalProperties:false},annotations:{readOnlyHint:false,untrustedContentHint:false},execute(input){if(!input||!input.description||!Number.isFinite(input.amount)||input.amount<=0||!categories[input.category]||!['income','expense'].includes(input.type))throw new Error('Datos de movimiento inválidos');const item={...input,id:'t'+Date.now()};transactions.push(item);save();initFilters();renderTable();return {created:true,id:item.id,balance_updated:true};}});
+        register({name:'create_financial_movement',title:'Crear movimiento',description:'Crea un ingreso o gasto con una categoría libre y actualiza inmediatamente el tablero visible.',inputSchema:{type:'object',properties:{description:{type:'string',minLength:1,maxLength:60},amount:{type:'number',exclusiveMinimum:0},date:{type:'string',pattern:'^\\d{4}-\\d{2}-\\d{2}$'},category:{type:'string',minLength:1,maxLength:40},type:{type:'string',enum:['income','expense']}},required:['description','amount','date','category','type'],additionalProperties:false},annotations:{readOnlyHint:false,untrustedContentHint:false},execute(input){if(!input||!input.description||!input.category?.trim()||!Number.isFinite(input.amount)||input.amount<=0||!['income','expense'].includes(input.type))throw new Error('Datos de movimiento inválidos');const item={...input,category:input.category.trim(),id:'t'+Date.now()};transactions.push(item);save();initFilters();renderTable();return {created:true,id:item.id,balance_updated:true};}});
       }
     })();
   </script>
