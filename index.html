@@ -231,7 +231,7 @@
         <div class="brand-name">Pulso<small>Finanzas claras</small></div>
       </div>
       <nav class="nav" aria-label="Navegación principal">
-        <button class="nav-item active"><span class="nav-icon">⌁</span><span class="nav-label">Resumen</span></button>
+        <button class="nav-item active" data-focus="top"><span class="nav-icon">⌁</span><span class="nav-label">Resumen</span></button>
         <button class="nav-item" data-focus="transactions"><span class="nav-icon">⇅</span><span class="nav-label">Movimientos</span></button>
         <button class="nav-item" data-focus="categories"><span class="nav-icon">◫</span><span class="nav-label">Categorías</span></button>
         <button class="nav-item" id="sideExport"><span class="nav-icon">⇩</span><span class="nav-label">Exportar datos</span></button>
@@ -265,7 +265,7 @@
 
         <section class="dashboard-grid">
           <article class="card chart-card">
-            <div class="card-head"><div><h2>Evolución mensual</h2><p>Ingresos y gastos de los últimos seis meses</p></div><div class="segmented"><button class="active">6 meses</button><button>1 año</button></div></div>
+            <div class="card-head"><div><h2>Evolución mensual</h2><p id="chartSubtitle">Ingresos y gastos de los últimos seis meses</p></div><div class="segmented"><button class="active" id="period6">6 meses</button><button id="period12">1 año</button></div></div>
             <div class="chart-wrap"><svg id="trendChart" viewBox="0 0 700 240" role="img" aria-label="Gráfico de ingresos y gastos mensuales"></svg></div>
             <div class="legend"><span style="--dot:var(--income)">Ingresos</span><span style="--dot:var(--expense)">Gastos</span></div>
           </article>
@@ -332,7 +332,7 @@
         {id:'t18',description:'Landing comercial',amount:390000,date:'2026-04-21',category:'Ingresos',type:'income'},
         {id:'t19',description:'Gastos generales',amount:249000,date:'2026-04-06',category:'Otros',type:'expense'}
       ];
-      let transactions = load();
+      let transactions = load(), chartMonths = 6;
       const $ = s => document.querySelector(s);
       const money = n => new Intl.NumberFormat('es-AR',{style:'currency',currency:'ARS',maximumFractionDigits:0}).format(n);
       const monthName = key => new Intl.DateTimeFormat('es-AR',{month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(key+'-01T12:00:00Z'));
@@ -382,7 +382,7 @@
       }
 
       function renderChart(){
-        const keys=monthsBack(), vals=keys.map(k=>{const r=transactions.filter(x=>monthKey(x.date)===k);return {income:sum(r,'income'),expense:sum(r,'expense')}}), max=Math.max(1,...vals.flatMap(v=>[v.income,v.expense]));
+        const keys=monthsBack(chartMonths), vals=keys.map(k=>{const r=transactions.filter(x=>monthKey(x.date)===k);return {income:sum(r,'income'),expense:sum(r,'expense')}}), max=Math.max(1,...vals.flatMap(v=>[v.income,v.expense]));
         const w=700,h=240,p={l:42,r:15,t:15,b:32},innerW=w-p.l-p.r,innerH=h-p.t-p.b;
         const x=i=>p.l+(i/(keys.length-1))*innerW, y=v=>p.t+innerH-(v/max)*innerH;
         const line=type=>vals.map((v,i)=>`${i?'L':'M'} ${x(i)} ${y(v[type])}`).join(' ');
@@ -408,14 +408,16 @@
 
       function exportCSV(){
         const rows=currentRows(), quote=v=>'"'+String(v).replaceAll('"','""')+'"', csv=['Fecha,Tipo,Categoría,Descripción,Importe',...rows.map(x=>[x.date,x.type==='income'?'Ingreso':'Gasto',x.category,x.description,x.amount].map(quote).join(','))].join('\n');
-        const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.download='pulso-movimientos.csv';a.click();URL.revokeObjectURL(a.href);notify('Archivo CSV preparado');
+        const a=document.createElement('a'),url=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}));a.href=url;a.download='pulso-movimientos.csv';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(url);a.remove()},1200);notify('Archivo CSV preparado');
       }
 
       $('#movementForm').addEventListener('submit',e=>{e.preventDefault();const id=$('#editId').value,type=document.querySelector('[name=type]:checked').value;const item={id:id||'t'+Date.now(),description:$('#descriptionInput').value.trim(),amount:Number($('#amountInput').value),date:$('#dateInput').value,category:$('#categoryInput').value,type};if(!item.description||!item.date||item.amount<=0)return;if(id){transactions=transactions.map(x=>x.id===id?item:x)}else{transactions.push(item)}save();initFilters();$('#monthFilter').value=monthKey(item.date);renderTable();closeModal();notify(id?'Movimiento actualizado':'Movimiento agregado');});
       $('#transactionBody').addEventListener('click',e=>{const edit=e.target.closest('[data-edit]'),del=e.target.closest('[data-delete]');if(edit)openModal(transactions.find(x=>x.id===edit.dataset.edit));if(del)removeItem(del.dataset.delete);});
       ['#searchInput','#monthFilter','#typeFilter','#categoryFilter'].forEach(s=>$(s).addEventListener(s.includes('search')?'input':'change',renderTable));
       $('#newBtn').onclick=$('#mobileNew').onclick=()=>openModal();$('#closeDialog').onclick=$('#cancelDialog').onclick=closeModal;$('#exportBtn').onclick=$('#sideExport').onclick=exportCSV;
-      document.querySelectorAll('[data-focus]').forEach(b=>b.onclick=()=>{const id=b.dataset.focus;if(id==='top')scrollTo({top:0,behavior:'smooth'});else document.getElementById(id)?.scrollIntoView({behavior:'smooth'});});
+      document.querySelectorAll('[data-focus]').forEach(b=>b.onclick=()=>{const id=b.dataset.focus;if(id==='top')scrollTo({top:0,behavior:'smooth'});else document.getElementById(id)?.scrollIntoView({behavior:'smooth'});if(b.classList.contains('nav-item')){document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active'));b.classList.add('active')}});
+      function setChartPeriod(months){chartMonths=months;$('#period6').classList.toggle('active',months===6);$('#period12').classList.toggle('active',months===12);$('#chartSubtitle').textContent=months===6?'Ingresos y gastos de los últimos seis meses':'Ingresos y gastos de los últimos doce meses';renderChart();notify(months===6?'Vista de 6 meses':'Vista anual')}
+      $('#period6').onclick=()=>setChartPeriod(6);$('#period12').onclick=()=>setChartPeriod(12);
       $('#themeBtn').onclick=()=>{const next=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=next;localStorage.setItem(THEME_KEY,next);$('#themeBtn').textContent=next==='dark'?'☼':'◐';};
       document.documentElement.dataset.theme=localStorage.getItem(THEME_KEY)||'dark';
       const hour=new Date().getHours();$('#greeting').textContent=(hour<12?'Buen día':hour<20?'Buenas tardes':'Buenas noches')+', Fernando';
